@@ -1,0 +1,9 @@
+// Placeholder root build.gradle for permission_handler_android
+// Actual Android library configuration lives under the 'android' subdirectory
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
