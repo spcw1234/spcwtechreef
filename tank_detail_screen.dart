@@ -9,6 +9,7 @@ import 'orp_settings_screen.dart';
 import 'cv_settings_screen_webview.dart';
 import 'dose_settings_screen.dart';
 import 'waterlevel_screen.dart';
+import 'chiller_settings_screen.dart';
 import 'temperature_graph_screen.dart';
 
 /**
@@ -228,10 +229,16 @@ class TankDetailScreen extends StatelessWidget {
   Widget _buildDeviceCard(BuildContext context, Tank tank, Device device) {
     return Consumer<DeviceProvider>(
       builder: (context, provider, child) {
+        // Provider에서 최신 장치 정보를 직접 가져옴
+        final latestDevice = provider.devices.firstWhere(
+          (d) => d.id == device.id,
+          orElse: () => device, // 못 찾으면 원래 device 사용
+        );
+        
         // DOSE 장치의 경우 DosingPumpInfo의 online 상태를 확인
-        bool isDeviceConnected = device.isConnected;
-        if (device.deviceType.toUpperCase() == 'DOSE') {
-          final doseInfo = provider.getDoseInfo(device.id);
+        bool isDeviceConnected = latestDevice.isConnected;
+        if (latestDevice.deviceType.toUpperCase() == 'DOSE') {
+          final doseInfo = provider.getDoseInfo(latestDevice.id);
           isDeviceConnected = doseInfo?.online ?? false;
         }
         
@@ -241,30 +248,38 @@ class TankDetailScreen extends StatelessWidget {
             leading: CircleAvatar(
               backgroundColor: isDeviceConnected ? Colors.green : Colors.red,
               child: Icon(
-                _getDeviceIcon(device.deviceType),
+                _getDeviceIcon(latestDevice.deviceType),
                 color: Colors.white,
               ),
             ),
-        title: Text(device.customName),
+        title: Text(latestDevice.customName),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('타입: ${device.deviceType}'),
-            if (device.currentTemp != null)
-              Text('현재 온도: ${device.currentTemp!.toStringAsFixed(1)}°C'),
+            Text('타입: ${latestDevice.deviceType}'),
+            if (latestDevice.currentTemp != null)
+              Text('현재 온도: ${latestDevice.currentTemp!.toStringAsFixed(1)}°C'),
+            if (latestDevice.deviceType.toUpperCase() == 'CHIL' && isDeviceConnected) ...[
+              if (latestDevice.chillerState != null) 
+                Text('Chiller: ${latestDevice.chillerState! ? "ON" : "OFF"}', 
+                     style: TextStyle(color: latestDevice.chillerState! ? Colors.cyan : Colors.grey)),
+              if (latestDevice.tempSource != null) Text('Source: ${latestDevice.tempSource}'),
+            ],
+            if (latestDevice.deviceType.toUpperCase() == 'ORP' && isDeviceConnected && latestDevice.orpCorrected != null)
+              Text('ORP: ${latestDevice.orpCorrected?.toStringAsFixed(1)} mV'),
           ],
         ),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             switch (value) {
               case 'settings':
-                _navigateToDeviceSettings(context, device);
+                _navigateToDeviceSettings(context, latestDevice);
                 break;
               case 'graph':
-                _navigateToGraph(context, device);
+                _navigateToGraph(context, latestDevice);
                 break;
               case 'remove':
-                _showRemoveDeviceDialog(context, tank, device);
+                _showRemoveDeviceDialog(context, tank, latestDevice);
                 break;
             }
           },
@@ -467,6 +482,13 @@ class TankDetailScreen extends StatelessWidget {
         context,
         MaterialPageRoute(
           builder: (context) => WaterLevelScreen(deviceId: device.id),
+        ),
+      );
+    } else if (device.deviceType.toUpperCase() == 'CHIL') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChillerSettingsScreen(device: device),
         ),
       );
     }

@@ -17,6 +17,11 @@ class Device {
   double? hysteresis;
   int? pwmMin;
   
+  // CHIL specific fields
+  bool? chillerState;
+  String? tempSource;
+  String? wiringTopic;
+  
   // ORP specific fields
   double? orpRaw;
   double? orpCorrected;
@@ -40,6 +45,9 @@ class Device {
     this.coolerState,
     this.hysteresis,
     this.pwmMin,
+    this.chillerState,
+    this.tempSource,
+    this.wiringTopic,
     this.orpRaw,
     this.orpCorrected,
     this.streamUrl,
@@ -59,7 +67,7 @@ class DeviceData {
   @JsonKey(name: 'temp')
   double? currentTemp;
 
-  @JsonKey(name: 'set_temp')
+  @JsonKey(name: 'setTemp')  // ESP32 sends 'setTemp', not 'settemp'
   double? setTemp;
 
   @JsonKey(name: 'pwm_value')
@@ -73,6 +81,16 @@ class DeviceData {
 
   @JsonKey(name: 'pwm_min')
   int? pwmMinValue;
+
+  // CHIL specific fields
+  @JsonKey(name: 'chiller_state')
+  bool? chillerState;
+
+  @JsonKey(name: 'temp_source')
+  String? tempSource;
+
+  @JsonKey(name: 'wiring_topic')
+  String? wiringTopic;
 
   @JsonKey(name: 'orp_raw')
   double? orpRawVal;
@@ -99,6 +117,9 @@ class DeviceData {
     this.coolerState,
     this.hysteresisVal,
     this.pwmMinValue,
+    this.chillerState,
+    this.tempSource,
+    this.wiringTopic,
     this.orpRawVal,
     this.orpCorrectedVal,
     this.streamUrl,

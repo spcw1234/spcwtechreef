@@ -7,7 +7,9 @@ import 'tank_provider.dart';
 /// 장치 간 배선(와이어링) 설정 화면
 /// TEMP/ORP 등 컨트롤러 장치의 상태 토픽을 다른 장치(예: 쿨러)에 연결
 class DeviceWiringScreen extends StatefulWidget {
-  const DeviceWiringScreen({super.key});
+  final Device? device; // 특정 장치에 대한 와이어링 설정인 경우
+  
+  const DeviceWiringScreen({super.key, this.device});
 
   @override
   State<DeviceWiringScreen> createState() => _DeviceWiringScreenState();
@@ -18,14 +20,23 @@ class _DeviceWiringScreenState extends State<DeviceWiringScreen> {
   Device? _selectedTarget;
 
   @override
+  void initState() {
+    super.initState();
+    // 특정 장치가 전달된 경우 target으로 설정
+    if (widget.device != null) {
+      _selectedTarget = widget.device;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
   final deviceProvider = context.watch<DeviceProvider>();
   final tankProvider = context.watch<TankProvider>();
   final devices = deviceProvider.devices;
 
-    // 간단한 필터: 소스는 TEMP/ORP, 타겟은 TEMP/ORP (추후 COOLER 타입 등 세분화 가능)
+    // 간단한 필터: 소스는 TEMP/ORP, 타겟은 TEMP/ORP/CHIL
     final sourceCandidates = devices.where((d) => d.deviceType == 'TEMP' || d.deviceType == 'ORP').toList();
-    final targetCandidates = devices.where((d) => d.deviceType == 'TEMP' || d.deviceType == 'ORP').toList();
+    final targetCandidates = devices.where((d) => d.deviceType == 'TEMP' || d.deviceType == 'ORP' || d.deviceType == 'CHIL').toList();
 
     String _labelWithTank(Device d) {
       final tank = tankProvider.findTankByDevice(d.id);

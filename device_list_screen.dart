@@ -8,6 +8,7 @@ import 'cv_settings_screen_webview.dart';
 import 'temperature_graph_screen.dart';
 import 'dose_settings_screen.dart';
 import 'waterlevel_screen.dart';
+import 'chiller_settings_screen.dart';
 
 class DeviceListScreen extends StatelessWidget {
   const DeviceListScreen({super.key});
@@ -194,6 +195,12 @@ class DeviceListScreen extends StatelessWidget {
                               if (device.streamStatus != null) Text('Stream: ${_getStreamStatusText(device.streamStatus!)}'),
                               if (device.detectedObjects != null) Text('Objects: ${device.detectedObjects}'),
                             ],
+                            if (device.deviceType.toUpperCase() == 'CHIL' && isDeviceConnected) ...[
+                              if (device.chillerState != null) 
+                                Text('Chiller: ${device.chillerState! ? "ON" : "OFF"}', 
+                                     style: TextStyle(color: device.chillerState! ? Colors.cyan : Colors.grey)),
+                              if (device.tempSource != null) Text('Source: ${device.tempSource}'),
+                            ],
                           ],
                         ),
                   trailing: Row(
@@ -258,6 +265,13 @@ class DeviceListScreen extends StatelessWidget {
                           builder: (context) => WaterLevelScreen(deviceId: device.id),
                         ),
                       );
+                    } else if (device.deviceType.toUpperCase() == 'CHIL') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChillerSettingsScreen(device: device),
+                        ),
+                      );
                     } else {
                       // TEMP 또는 기타 타입은 기본 설정 화면으로
                       Navigator.push(
@@ -289,6 +303,8 @@ class DeviceListScreen extends StatelessWidget {
         return Icons.videocam;
       case 'DOSE':
         return Icons.science;
+      case 'CHIL':
+        return Icons.ac_unit;
       default:
         return Icons.devices_other;
     }

@@ -41,4 +41,22 @@ class LocalStorageService {
       return {};
     }
   }
+
+  // ===== Generic key-value storage for double values =====
+  Future<void> setDouble(String key, double value) async {
+    final prefs = await SharedPreferences.getInstance();
+  final ok = await prefs.setDouble(key, value);
+  // debug
+  // ignore: avoid_print
+  print('LocalStorageService: setDouble $key = $value (ok=$ok)');
+  }
+
+  Future<double?> getDouble(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+  final v = prefs.getDouble(key);
+  // debug
+  // ignore: avoid_print
+  print('LocalStorageService: getDouble $key -> $v');
+  return v;
+  }
 }

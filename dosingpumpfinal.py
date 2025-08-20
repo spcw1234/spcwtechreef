@@ -101,6 +101,16 @@ TIMEZONE_OFFSET = 9 * 3600
 # 스케줄 저장 파일명
 SCHEDULE_FILENAME = "schedules.json"
 
+# Uptime / auto-reboot 설정
+UPTIME_FILENAME = "uptime.json"
+# 하루 기준으로 쉽게 바꿀 수 있게 상수로 정의 (초)
+REBOOT_AFTER_SECONDS = 7 * 24 * 3600  # 7 days
+UPTIME_SAVE_INTERVAL_SEC = 60 * 10  # 10 minutes
+uptime_accum_seconds = 0
+last_uptime_tick = 0
+_last_uptime_saved_at = 0
+
+
 # WiFi 연결 개선 설정
 WIFI_RETRY_COUNT = 3
 WIFI_RETRY_DELAYS = [1, 2, 5, 10, 20]
@@ -258,6 +268,34 @@ def log_message(msg, publish_mqtt=True, level="INFO"):
     except Exception as e:
         # 기타 오류
         print(f"MQTT 로그 발행 실패: {e}")
+
+
+def load_uptime_accumulator():
+    """파일에서 누적 가동시간(초)을 로드한다."""
+    global uptime_accum_seconds, _last_uptime_saved_at
+    try:
+        uos.stat(UPTIME_FILENAME)
+        with open(UPTIME_FILENAME, 'r') as f:
+            d = ujson.load(f)
+            uptime_accum_seconds = int(d.get('acc', 0))
+            _last_uptime_saved_at = uptime_accum_seconds
+            log_message(f"Uptime loaded: {uptime_accum_seconds}s", publish_mqtt=False)
+    except OSError:
+        uptime_accum_seconds = 0
+    except Exception as e:
+        log_message(f"Uptime load failed: {e}", publish_mqtt=False)
+
+
+def save_uptime_accumulator():
+    """현재 누적 가동시간을 파일에 저장한다."""
+    try:
+        data = {'acc': int(uptime_accum_seconds)}
+        with open(UPTIME_FILENAME, 'w') as f:
+            ujson.dump(data, f)
+        log_message(f"Uptime saved: {uptime_accum_seconds}s", publish_mqtt=False)
+    except Exception as e:
+        log_message(f"Uptime save failed: {e}", publish_mqtt=False)
+
 
 # --- MQTT 관련 함수 ---
 def mqtt_callback(topic, msg):
@@ -435,9 +473,9 @@ def connect_mqtt():
     except Exception as e:
         log_message(f"MQTT 연결 실패: {e}")
         mqtt_connected = False
-        try: 
+        try:
             mqtt_client.disconnect()
-        except: 
+        except Exception as e:
             pass
         mqtt_client = None
         if oled: 
@@ -597,7 +635,7 @@ def load_schedule_log():
     try:
         with open(SCHEDULE_LOG_FILENAME, 'r') as f:
             return ujson.load(f)
-    except:
+    except Exception as e:
         return {}
 
 def save_schedule_log(schedule_log):
@@ -637,7 +675,7 @@ def should_run_schedule(pump_id, hour, minute, interval_days):
         days_diff = int((current_timestamp - last_timestamp) / 86400)  # 86400초 = 1일
         
         return days_diff >= interval_days
-    except:
+    except Exception as e:
         # 날짜 파싱 오류 시 실행
         return True
 
@@ -658,17 +696,17 @@ def init_hardware():
     global i2c, oled, buttons, pump1_in1, pump1_in2, pump2_in1, pump2_in2
     log_message("하드웨어 초기화 중...", False)
     
-    try: 
+    try:
         machine.Pin(I2C_SCL_PIN, machine.Pin.IN)
         machine.Pin(I2C_SDA_PIN, machine.Pin.IN)
-    except: 
+    except Exception as e:
         pass
     
     try:
         i2c = machine.I2C(0, scl=machine.Pin(I2C_SCL_PIN), sda=machine.Pin(I2C_SDA_PIN), freq=I2C_FREQ)
         devices = i2c.scan()
         log_message(f"I2C devices: {[hex(d) for d in devices]}", False)
-        
+
         addr = 0x3c if 0x3c in devices else (0x3d if 0x3d in devices else None)
         if addr:
             oled = ssd1306.SSD1306_I2C(SCREEN_WIDTH, SCREEN_HEIGHT, i2c, addr=addr)
@@ -676,10 +714,10 @@ def init_hardware():
             oled.text("OLED OK", 0, 0)
             oled.show()
             time.sleep(1)
-        else: 
+        else:
             log_message("OLED 없음.", False)
             oled = None
-    except Exception as e: 
+    except Exception as e:
         log_message(f"I2C/OLED 오류: {e}", False)
         oled = None
 
@@ -996,7 +1034,7 @@ def measure_wifi_signal_strength():
             wifi_rssi_index = (wifi_rssi_index + 1) % WIFI_MAX_RSSI_HISTORY
             wifi_connection_state['rssi'] = rssi
             return rssi
-    except:
+    except Exception as e:
         pass
     return 0
 
@@ -1301,7 +1339,7 @@ async def connect_wifi():
         if wlan:
             wlan.disconnect()
             wlan.active(False)
-    except:
+    except Exception as e:
         pass
     
     force_screen_update = True
@@ -2837,6 +2875,7 @@ async def check_global_state():
 # --- 주기적 작업 ---
 async def periodic_tasks():
     """주기적으로 실행되는 작업들 (예: 상태 점검, MQTT 핑 등)"""
+    global uptime_accum_seconds, last_uptime_tick, _last_uptime_saved_at
     while True:
         try:
             await check_global_state()
@@ -2845,9 +2884,73 @@ async def periodic_tasks():
                 wdt.feed()
             except Exception as e:
                 log_message(f"WDT 피드 오류 (periodic_tasks): {e}")
+
+            # Uptime 누적 및 파일 저장/재부팅 체크
+            try:
+                now_ms = time.ticks_ms()
+                if last_uptime_tick == 0:
+                    last_uptime_tick = now_ms
+                diff_ms = time.ticks_diff(now_ms, last_uptime_tick)
+                if diff_ms > 0:
+                    uptime_accum_seconds += diff_ms // 1000
+                    last_uptime_tick = now_ms
+
+                # 주기적으로 저장
+                if (uptime_accum_seconds - _last_uptime_saved_at) >= \
+                   UPTIME_SAVE_INTERVAL_SEC:
+                    save_uptime_accumulator()
+                    _last_uptime_saved_at = uptime_accum_seconds
+
+                # 재부팅 조건
+                if uptime_accum_seconds >= REBOOT_AFTER_SECONDS:
+                    log_message("Reboot threshold reached", False)
+                    save_uptime_accumulator()
+                    # 안전하게 리부트: 펌프 정지, 상태 발행, MQTT 연결해제 후 리셋
+                    try:
+                        log_message("Performing safe shutdown before reboot", False)
+                        # 펌프 정지 및 상태 발행
+                        for pid in (1, 2):
+                            try:
+                                if pump_tasks.get(pid) is not None:
+                                    try:
+                                        pump_tasks[pid].cancel()
+                                    except Exception:
+                                        pass
+                                    pump_tasks[pid] = None
+                                pump_off(pid)
+                                publish_pump_status(pid)
+                            except Exception as e:
+                                log_message(f"Error stopping pump {pid}: {e}", False)
+
+                        # MQTT에 offline 상태 발행
+                        try:
+                            publish_status(MQTT_ONLINE_STATUS_TOPIC, "false", retain=True)
+                        except Exception:
+                            pass
+
+                        # MQTT 연결 해제
+                        try:
+                            if mqtt_client and mqtt_connected:
+                                mqtt_client.disconnect()
+                        except Exception:
+                            pass
+
+                        # 잠깐 대기 후 리셋
+                        try:
+                            await asyncio.sleep(2)
+                        except Exception:
+                            # sleep이 실패해도 리셋 시도
+                            pass
+
+                        machine.reset()
+                    except Exception as e:
+                        log_message(f"machine.reset failed: {e}", False)
+            except Exception as e:
+                log_message(f"Uptime update error: {e}", False)
         except Exception as e:
             log_message(f"주기적 작업 중 오류: {e}")
-        await asyncio.sleep(10) # 10초 간격
+    await asyncio.sleep(10)  # 10초 간격
+
 
 # --- 메인 루프 ---
 async def main():
@@ -2856,6 +2959,12 @@ async def main():
     # 하드웨어 초기화
     init_hardware()
     force_screen_update = True
+
+    # Uptime 누적값 로드
+    try:
+        load_uptime_accumulator()
+    except Exception as e:
+        log_message(f"Uptime load at startup failed: {e}", publish_mqtt=False)
 
     # 스케줄 로드
     load_schedules()

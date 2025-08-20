@@ -416,7 +416,13 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
       return;
     }
 
-    // 2. JSON 데이터 메시지 처리
+    // 2. CHIL 장치의 연결 확인 메시지 처리 (payload가 "connected"인 경우)
+    if (payload.toLowerCase().trim() == "connected" && deviceType == "CHIL") {
+      _handleChillerConnectedMessage(deviceId, deviceType, topic);
+      return;
+    }
+
+    // 3. JSON 데이터 메시지 처리
     _handleDataMessage(deviceId, deviceType, payload);
   }
 
@@ -441,6 +447,17 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
     // Keep runtime info but do NOT auto-register the device in the saved device list.
     if (!_waterLevels.containsKey(deviceId)) {
       _waterLevels[deviceId] = WaterLevelInfo();
+      // Load saved offset asynchronously
+      _loadWaterLevelOffset(deviceId).then((savedOffset) {
+        if (savedOffset != null) {
+          final info = _waterLevels[deviceId];
+          if (info != null) {
+            info.offsetCm = savedOffset;
+            notifyListeners();
+            print('Loaded water level offset for $deviceId: $savedOffset cm');
+          }
+        }
+      });
     }
   }
 
@@ -483,7 +500,7 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
     info.online = true;
 
     // Store adjusted value (apply offset) in history for plotting and change detection
-    final adjusted = distanceCm - (info.offsetCm ?? 0.0);
+    final adjusted = distanceCm + (info.offsetCm ?? 0.0);
     info.history.add(WaterLevelRecord(info.lastUpdate!, adjusted));
     // Keep history bounded
     if (info.history.length > 300) {
@@ -499,7 +516,31 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
     final info = _waterLevels[deviceId]!;
     info.offsetCm = offsetCm;
     notifyListeners();
-    // optional: persist offsets in local storage (not implemented)
+    // Persist offset in local storage
+  print('DeviceProvider: setWaterLevelOffset called for $deviceId -> $offsetCm cm');
+  _saveWaterLevelOffset(deviceId, offsetCm);
+  }
+
+  /// Save water level offset to local storage
+  void _saveWaterLevelOffset(String deviceId, double offsetCm) async {
+    try {
+  await _localStorageService.setDouble('wlv_offset_$deviceId', offsetCm);
+  print('DeviceProvider: Water level offset saved for $deviceId: $offsetCm cm');
+    } catch (e) {
+  print('DeviceProvider: Failed to save water level offset for $deviceId: $e');
+    }
+  }
+
+  /// Load water level offset from local storage
+  Future<double?> _loadWaterLevelOffset(String deviceId) async {
+    try {
+  final v = await _localStorageService.getDouble('wlv_offset_$deviceId');
+  print('DeviceProvider: _loadWaterLevelOffset for $deviceId -> $v');
+  return v;
+    } catch (e) {
+  print('DeviceProvider: Failed to load water level offset for $deviceId: $e');
+      return null;
+    }
   }
 
   /// Return history records for a waterlevel device
@@ -676,6 +717,25 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   /**
+   * CHIL 장치의 연결 확인 메시지 처리
+   */
+  void _handleChillerConnectedMessage(String deviceId, String deviceType, String topic) {
+    print('MQTT: CHIL 장치 $deviceId wiring 연결 확인 메시지 수신');
+
+    // 등록된 장치인지 확인
+    final knownDeviceIndex = _devices.indexWhere((d) => d.id == deviceId);
+    if (knownDeviceIndex != -1) {
+      // 연결 상태 업데이트
+      Device knownDevice = _devices[knownDeviceIndex];
+      if (!knownDevice.isConnected) {
+        knownDevice.isConnected = true;
+        print('MQTT: CHIL 장치 ${knownDevice.customName} ($deviceId) 연결 확인됨');
+      }
+      notifyListeners(); // UI 업데이트
+    }
+  }
+
+  /**
    * 데이터 메시지 처리 (JSON 형태)
    */
   void _handleDataMessage(String deviceId, String deviceType, String payload) {
@@ -703,7 +763,9 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
     try {
       // JSON 파싱
       final Map<String, dynamic> jsonPayload = jsonDecode(payload);
+      print('MQTT: Raw JSON payload for ${device.customName}: $jsonPayload');
       final data = DeviceData.fromJson(jsonPayload);
+      print('MQTT: Parsed DeviceData for ${device.customName}: setTemp=${data.setTemp}, hysteresisVal=${data.hysteresisVal}, chillerState=${data.chillerState}');
 
       // 장치 데이터 업데이트
       bool hasChanges = false;
@@ -765,6 +827,35 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
         }
         if (data.detectionData != null) {
           device.detectionData = data.detectionData;
+          hasChanges = true;
+        }
+      }
+
+      if (deviceType == "CHIL") {
+        print('CHIL device ${device.customName}: received data.setTemp=${data.setTemp}, device.setTemp=${device.setTemp}');
+        print('CHIL device ${device.customName}: received data.hysteresisVal=${data.hysteresisVal}, device.hysteresis=${device.hysteresis}');
+        
+        if (data.chillerState != null && device.chillerState != data.chillerState) {
+          device.chillerState = data.chillerState!;
+          hasChanges = true;
+        }
+        if (data.tempSource != null && device.tempSource != data.tempSource) {
+          device.tempSource = data.tempSource;
+          hasChanges = true;
+        }
+        if (data.wiringTopic != null && device.wiringTopic != data.wiringTopic) {
+          device.wiringTopic = data.wiringTopic;
+          hasChanges = true;
+        }
+        if (data.hysteresisVal != null && device.hysteresis != data.hysteresisVal) {
+          print('CHIL device ${device.customName}: updating hysteresis from ${device.hysteresis} to ${data.hysteresisVal}');
+          device.hysteresis = data.hysteresisVal!;
+          hasChanges = true;
+        }
+        // CHIL devices also need setTemp parsing for settings screen initial values
+        if (data.setTemp != null && device.setTemp != data.setTemp) {
+          print('CHIL device ${device.customName}: updating setTemp from ${device.setTemp} to ${data.setTemp}');
+          device.setTemp = data.setTemp!;
           hasChanges = true;
         }
       }
@@ -1273,6 +1364,34 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
     print('CV 장치 ${device.customName}에 재시작 명령 전송');
   }
 
+  /**
+   * CHIL 장치에 일반 명령 전송
+   *
+   * @param deviceId 장치 ID
+   * @param deviceType 장치 타입
+   * @param messageType 메시지 타입 (con, wir 등)
+   * @param message 전송할 메시지 (Map 또는 String)
+   */
+  Future<void> publishToDevice(String deviceId, String deviceType, String messageType, dynamic message) async {
+    if (_mqttClient?.connectionStatus?.state != MqttConnectionState.connected) {
+      print('MQTT 클라이언트가 연결되지 않아 명령을 보낼 수 없습니다.');
+      _connectMqtt();
+      return;
+    }
+
+    final topic = '$deviceId/$deviceType/$messageType';
+    String messageString;
+    
+    if (message is Map) {
+      messageString = jsonEncode(message);
+    } else {
+      messageString = message.toString();
+    }
+
+    _doPublishCommand(topic, messageString, false);
+    print('CHIL 장치 $deviceId에 명령 전송: $topic ← $messageString');
+  }
+
   // ===== 기존 코드 =====
 
   /**
@@ -1408,80 +1527,6 @@ class DeviceProvider with ChangeNotifier, WidgetsBindingObserver {
  *   "pwm_min": 50
  * }
  */
-class DeviceData {
-  final double? currentTemp;    // 현재 온도
-  final double? setTemp;        // 설정 온도
-  final int? pwmValue;          // PWM 출력값
-  final bool? coolerState;      // 쿨러 동작 상태
-  final double? hysteresisVal;  // 히스테리시스 값
-  final int? pwmMinValue;       // PWM 최소값
-  final double? orpRawVal;      // ORP Raw 값
-  final double? orpCorrectedVal; // ORP Corrected 값
-  
-  // CV (Computer Vision) 관련 필드 추가
-  final String? streamUrl;      // 스트리밍 URL
-  final String? streamStatus;   // 스트리밍 상태
-  final int? detectedObjects;   // 감지된 객체 수
-  final List<Map<String, dynamic>>? detectionData; // 감지 데이터
-
-  DeviceData({
-    this.currentTemp,
-    this.setTemp,
-    this.pwmValue,
-    this.coolerState,
-    this.hysteresisVal,
-    this.pwmMinValue,
-    this.orpRawVal,
-    this.orpCorrectedVal,
-    this.streamUrl,
-    this.streamStatus,
-    this.detectedObjects,
-    this.detectionData,
-  });
-  /**
-   * JSON에서 DeviceData 객체 생성
-   * ESP32가 보내는 JSON 키값들과 매핑됨
-   */
-  factory DeviceData.fromJson(Map<String, dynamic> json) {
-    return DeviceData(
-      currentTemp: (json['temp'] as num?)?.toDouble(),           // ESP32의 'temp' 키
-      setTemp: (json['set_temp'] as num?)?.toDouble(),           // ESP32의 'set_temp' 키
-      pwmValue: json['pwm_value'] as int?,                       // ESP32의 'pwm_value' 키
-      coolerState: json['cooler_state'] as bool?,                // ESP32의 'cooler_state' 키
-      hysteresisVal: (json['hysteresis'] as num?)?.toDouble(),   // ESP32의 'hysteresis' 키
-      pwmMinValue: json['pwm_min'] as int?,                      // ESP32의 'pwm_min' 키
-      orpRawVal: (json['orp_raw'] as num?)?.toDouble(),          // ESP32의 'orp_raw' 키
-      orpCorrectedVal: (json['orp_corrected'] as num?)?.toDouble(), // ESP32의 'orp_corrected' 키
-      streamUrl: json['stream_url'] as String?,                  // CV의 'stream_url' 키
-      streamStatus: json['stream_status'] as String?,            // CV의 'stream_status' 키
-      detectedObjects: json['detected_objects'] as int?,         // CV의 'detected_objects' 키
-      detectionData: (json['detection_data'] as List<dynamic>?)  // CV의 'detection_data' 키
-          ?.map((e) => e as Map<String, dynamic>)
-          .toList(),
-    );
-  }
-  
-  /**
-   * DeviceData 객체를 JSON으로 변환
-   * CV 장치 데이터 처리에 필요함
-   */
-  Map<String, dynamic> toJson() {
-    return {
-      'temp': currentTemp,
-      'set_temp': setTemp,
-      'pwm_value': pwmValue,
-      'cooler_state': coolerState,
-      'hysteresis': hysteresisVal,
-      'pwm_min': pwmMinValue,
-      'orp_raw': orpRawVal,
-      'orp_corrected': orpCorrectedVal,
-      'stream_url': streamUrl,
-      'stream_status': streamStatus,
-      'detected_objects': detectedObjects,
-      'detection_data': detectionData,
-    };
-  }
-}
 
 /// 도징 펌프 상태/스케줄 보관용 모델
 class DosingPumpInfo {
