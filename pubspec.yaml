@@ -40,7 +40,7 @@ dependencies:
   json_annotation: ^4.8.0
   sqflite: ^2.2.8
   path: ^1.8.3
-  fl_chart: any
+  fl_chart: ^0.69.0
   webview_flutter: ^4.0.7
   wakelock_plus: ^1.2.8
   permission_handler: ^10.4.0
@@ -105,5 +105,3 @@ flutter:
 dependency_overrides:
   permission_handler_android:
     path: vendor/permission_handler_android
-  fl_chart:
-    path: vendor/fl_chart_local
