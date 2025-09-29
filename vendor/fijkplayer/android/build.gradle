@@ -1,18 +1,35 @@
-group 'com.befovy.fijkplayer'
-version '0.11.0'
+plugins {
+    id 'com.android.library'
+}
 
-apply plugin: 'com.android.library'
+group = 'com.befovy.fijkplayer'
+version = '0.11.0'
 
 android {
     namespace 'com.befovy.fijkplayer'
-    compileSdkVersion 34
+    compileSdk = 34
 
     defaultConfig {
-        minSdkVersion 21
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        minSdk 21
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-    lintOptions {
+
+    lint {
         disable 'InvalidPackage'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    publishing {
+        singleVariant("debug") {
+            withSourcesJar()
+        }
+        singleVariant("release") {
+            withSourcesJar()
+        }
     }
 }
 
@@ -23,5 +40,5 @@ dependencies {
 
     // fijkplayer-full include the java lib and native shared libs for armv5 armv7 arm64 x86 x86_64
     implementation 'com.befovy.fijkplayer:fijkplayer-full:0.7.16'
-    implementation 'androidx.annotation:annotation:1.2.0'
+    implementation 'androidx.annotation:annotation:1.7.0'
 }
