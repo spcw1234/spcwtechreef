@@ -11,11 +11,29 @@ include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
+  # Exclude any Dart files placed directly in the repository root
+  # (we keep lib/ as the single source of truth)
+  - "*.dart"
+  # Exclude archived backups and temp restore folders
+  - "tmp_restore/**"
   - "vendor/**"
   - "lib/vendor/**"
   - "**/example/**"
   - "test/**"
   - "lib/test/**"
+  # Exclude stray vendor-like sources checked into lib/ that conflict with real packages
+  - "lib/volume.dart"
+  - "lib/fijk*.dart"
+  - "lib/panel.dart"
+  - "lib/panel2.dart"
+  - "lib/slider.dart"
+  - "lib/video_page.dart"
+  - "lib/local_path.dart"
+  - "lib/listview.dart"
+  - "lib/wakelock_plus*.dart"
+  - "lib/path_provider_*_test.dart"
+  - "lib/**_test.dart"
+  - "lib/**.mocks.dart"
 
 linter:
   # The lint rules applied to this project can be customized in the

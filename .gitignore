@@ -1,4 +1,63 @@
-# Miscellaneous
+# Flutter/Dart
+.dart_tool/
+/.pub/
+build/
+/.gradle/
+.gradle/
+/.idea/
+.vscode/
+*.iml
+
+# Android
+android/**/build/
+android/.gradle/
+android/local.properties
+**/android/build/
+**/android/**/build/
+*.apk
+*.aar
+
+# iOS
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+Pods/
+Runner.xcworkspace/
+*.xcworkspace
+*.xcuserstate
+
+# macOS
+macos/Flutter/Flutter.framework
+macos/Flutter/ephemeral/
+
+# Windows
+windows/flutter/ephemeral/
+
+# Linux
+linux/flutter/ephemeral/
+
+# Vendor/build artifacts
+vendor/**/android/**/build/
+vendor/**/build/
+
+# Node/npm
+node_modules/
+
+# Temporary files
+*.log
+*.tmp
+*.zip
+spcwreef-backup-*.zip
+tmp_restore/
+
+# Python
+__pycache__/
+*.pyc
+
+# Misc
+*.keystore
+.DS_Store
+/.flutter-plugins-dependencies
+/.flutter-plugins# Miscellaneous
 *.class
 *.log
 *.pyc

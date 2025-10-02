@@ -1,3 +1,7 @@
 {
+  "files.exclude": {
+    "/*.dart": true
+  }
+}{
     "cmake.sourceDirectory": "D:/flutter/linux"
 }
